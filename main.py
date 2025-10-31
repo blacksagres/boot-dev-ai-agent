@@ -19,7 +19,7 @@ def main():
     print("----- USAGE ------")
 
     print('Prompt tokens:', response.usage_metadata.prompt_token_count)
-    print('Prompt tokens:', response.usage_metadata.candidates_token_count)
+    print('Response tokens:', response.usage_metadata.candidates_token_count)
 
     print("------------------")
 
