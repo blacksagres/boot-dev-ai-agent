@@ -49,8 +49,10 @@ def main():
     
     print("Hello from boot-dev-ai-agent!")
 
+
+    # NOTE: For Gemini function schemas, use types.Type.OBJECT, types.Type.STRING, types.Type.ARRAY, etc. for the 'type' parameter, not string literals like 'object' or 'string'.
+    
     schema_get_files_info = types.FunctionDeclaration(
-        # our harcoded function
         name="get_files_info",
         description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
         parameters=types.Schema(
@@ -58,56 +60,62 @@ def main():
             properties={
                 "directory": types.Schema(
                     type=types.Type.STRING,
-                    description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself.",
-                ),
-            },
-        ),
+                    description="The directory to list files from, relative to the working directory. If not provided, lists files in the working directory itself."
+                )
+            }
+        )
     )
 
     schema_get_file_content = types.FunctionDeclaration(
-        # our harcoded function
         name="get_file_content",
-        description="Gets he full content of files in the specified folder, constrained to the working directory.",
+        description="Gets the full content of a file in the specified folder, constrained to the working directory.",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                "directory": types.Schema(
+                "file_path": types.Schema(
                     type=types.Type.STRING,
-                    description="The directory to get files from, relative to the working directory. If not provided, lists files in the working directory itself.",
-                ),
-            },
-        ),
+                    description="The file path to get content from, relative to the working directory."
+                )
+            }
+        )
     )
 
     schema_run_python_file = types.FunctionDeclaration(
-        # our harcoded function
         name="run_python_file",
-        description="Writes python scripts, constrained to the working directory.",
+        description="Executes a Python file with optional arguments, constrained to the working directory.",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                "directory": types.Schema(
+                "file_path": types.Schema(
                     type=types.Type.STRING,
-                    description="The directory to run files from, relative to the working directory. If not provided, lists files in the working directory itself.",
+                    description="The Python file to execute, relative to the working directory."
                 ),
-            },
-        ),
+                "args": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(type=types.Type.STRING, description="Argument to pass to the Python file."),
+                    description="Arguments to pass to the Python file."
+                )
+            }
+        )
     )
 
     schema_write_file = types.FunctionDeclaration(
-        # our harcoded function
         name="write_file",
         description="Writes content to files, constrained to the working directory.",
         parameters=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                "directory": types.Schema(
+                "file_path": types.Schema(
                     type=types.Type.STRING,
-                    description="The directory to write files to, relative to the working directory. If not provided, lists files in the working directory itself.",
+                    description="The file path to write to, relative to the working directory."
                 ),
-            },
-        ),
-    )              
+                "content": types.Schema(
+                    type=types.Type.STRING,
+                    description="The content to write to the file."
+                )
+            }
+        )
+    )
 
     available_functions = types.Tool(
         function_declarations=[
@@ -128,22 +136,19 @@ def main():
         config=config
     )
 
-    print(response.text)
-
-
-    if is_verbose:
-        print("----- USAGE ------")
-
-        print('User prompt:', input)
-        print('Prompt tokens:', response.usage_metadata.prompt_token_count)
-        print('Response tokens:', response.usage_metadata.candidates_token_count)
-
-        print("------------------")
+    from functions.call_function import call_function
 
     # Print function calls if present, else print text
     if hasattr(response, 'function_calls') and response.function_calls:
         for function_call_part in response.function_calls:
-            print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+            function_call_result = call_function(function_call_part, verbose=is_verbose)
+            # Check for .parts[0].function_response.response
+            try:
+                function_response = function_call_result.parts[0].function_response.response
+            except (AttributeError, IndexError):
+                raise RuntimeError("Fatal: No function response found in call_function result.")
+            if is_verbose:
+                print(f"-> {function_response}")
     else:
         print(response.text)
 
