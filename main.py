@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 import sys
+from functions.call_function import call_function
+
 
 load_dotenv()
 
@@ -11,6 +13,9 @@ client = genai.Client(api_key=api_key)
 
 system_prompt = """
 You are a helpful AI coding agent.
+
+Before starting, scan this folder structure (the working directory) to obtain full context of the application.
+Indicate when your scan is complete even before addressing any prompts from a user. This step is unskippable.
 
 When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
 
@@ -51,7 +56,7 @@ def main():
 
 
     # NOTE: For Gemini function schemas, use types.Type.OBJECT, types.Type.STRING, types.Type.ARRAY, etc. for the 'type' parameter, not string literals like 'object' or 'string'.
-    
+
     schema_get_files_info = types.FunctionDeclaration(
         name="get_files_info",
         description="Lists files in the specified directory along with their sizes, constrained to the working directory.",
@@ -130,27 +135,47 @@ def main():
         tools=[available_functions], system_instruction=system_prompt
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash-001",
-        contents=messages,
-        config=config
-    )
 
-    from functions.call_function import call_function
+    for i in range(0, 20):
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-001",
+            contents=messages,
+            config=config
+        )
 
-    # Print function calls if present, else print text
-    if hasattr(response, 'function_calls') and response.function_calls:
-        for function_call_part in response.function_calls:
-            function_call_result = call_function(function_call_part, verbose=is_verbose)
-            # Check for .parts[0].function_response.response
-            try:
-                function_response = function_call_result.parts[0].function_response.response
-            except (AttributeError, IndexError):
-                raise RuntimeError("Fatal: No function response found in call_function result.")
-            if is_verbose:
-                print(f"-> {function_response}")
-    else:
+        if response.candidates:
+            for candidate in response.candidates:
+                if candidate.content:
+                    messages.append(candidate.content)
+
+
+        # Print function calls if present, else print text
+        if hasattr(response, 'function_calls') and response.function_calls:
+            for function_call_part in response.function_calls:
+                function_call_result = call_function(function_call_part, verbose=is_verbose)
+                # Check for .parts[0].function_response.response
+                try:
+                    function_response = function_call_result.parts[0].function_response.response
+
+                    print("FUNCTION LOOP -", function_call_part)
+
+                    response_string = (", ".join([f"{tuple[0]}: {tuple[1]}" for tuple in function_response.items()]))
+
+                    if is_verbose:
+                        print("FUNCTION RESPONSE -", response_string)
+                    
+                    # messages.append(types.Content(role="user", parts=[types.Part(text=function_response)]))
+
+                except (AttributeError, IndexError):
+                    raise RuntimeError("Fatal: No function response found in call_function result.")
+
+
+        if response.text is None:
+            print("That should be it for your request.")
+            break
+
         print(response.text)
+
 
 
 if __name__ == "__main__":
